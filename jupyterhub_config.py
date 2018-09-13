@@ -53,8 +53,8 @@ c.JupyterHub.ssl_key = os.environ['SSL_KEY']
 c.JupyterHub.ssl_cert = os.environ['SSL_CERT']
 
 # Authenticate users with GitHub OAuth
-c.JupyterHub.authenticator_class = 'oauthenticator.GitHubOAuthenticator'
-c.GitHubOAuthenticator.oauth_callback_url = os.environ['OAUTH_CALLBACK_URL']
+# c.JupyterHub.authenticator_class = 'oauthenticator.GitHubOAuthenticator'
+# c.GitHubOAuthenticator.oauth_callback_url = os.environ['OAUTH_CALLBACK_URL']
 
 # Persist hub data on volume mounted inside container
 data_dir = os.environ.get('DATA_VOLUME_CONTAINER', '/data')
@@ -72,13 +72,30 @@ c.JupyterHub.db_url = 'postgresql://postgres:{password}@{host}/{db}'.format(
 c.Authenticator.whitelist = whitelist = set()
 c.Authenticator.admin_users = admin = set()
 c.JupyterHub.admin_access = True
+
+user_pass_dict = dict()
 pwd = os.path.dirname(__file__)
 with open(os.path.join(pwd, 'userlist')) as f:
     for line in f:
         if not line:
             continue
         parts = line.split()
-        name = parts[0]
-        whitelist.add(name)
-        if len(parts) > 1 and parts[1] == 'admin':
-            admin.add(name)
+        if len(parts) < 2:
+            continue
+        username = parts[0]
+        password = parts[1]
+        whitelist.add(username)
+        user_pass_dict[username] = password
+        if len(parts) > 2 and parts[1] == 'admin':
+            admin.add(username)
+
+from tornado import gen
+from jupyterhub.auth import Authenticator
+class SuperSecureAuthenticator(Authenticator):
+    @gen.coroutine
+    def authenticate(self, handler, data):
+        if user_pass_dict.get(data['username']) == data['password']:
+            return data['username']
+        return None
+
+c.JupyterHub.authenticator_class = SuperSecureAuthenticator
